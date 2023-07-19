@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v4"
 	"io"
 	"net/http"
@@ -108,7 +109,8 @@ func UploadBook(conn *pgx.Conn) http.HandlerFunc {
 		}
 
 		// Create a new book in the database with the file's path
-		_, err = conn.Exec(context.Background(), "INSERT INTO books (title, author, file_path) VALUES ($1, $2, $3)",
+		_, err = conn.Exec(context.Background(), "INSERT INTO books (id, title, author, file_path) VALUES ($1, $2, $3, $4)",
+			uuid.New(),
 			r.FormValue("title"), r.FormValue("author"), filepath.Join("./uploads", handler.Filename))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)

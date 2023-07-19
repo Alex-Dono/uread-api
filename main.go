@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/jackc/pgx/v4"
+	"github.com/rs/cors"
 	"uread/router"
 )
 
@@ -18,9 +19,16 @@ func main() {
 	}
 	defer conn.Close(context.Background())
 
-	router.SetupRouter(conn)
+	mux := router.SetupRouter(conn)
 
-	err = http.ListenAndServe(":8080", nil)
+	handler := cors.New(cors.Options{
+		AllowedOrigins: []string{"http://localhost:8081"},
+		AllowedMethods: []string{"GET", "POST", "PUT", "DELETE"},
+		AllowedHeaders: []string{"*"},
+	}).Handler(mux)
+
+	fmt.Printf("Connecting on port 8080")
+	err = http.ListenAndServe(":8080", handler)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to connect to server: %v\n", err)
 		os.Exit(1)
