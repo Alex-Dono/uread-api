@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"uread/model"
 )
 
@@ -33,15 +32,15 @@ func GetAllBooks(db *gorm.DB) http.HandlerFunc {
 func GetBook(db *gorm.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Get the book's ID from the URL parameters
-		id, err := strconv.Atoi(r.URL.Query().Get("id"))
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+		id := r.URL.Query().Get("id")
+		if id == "" {
+			http.Error(w, "ID is required", http.StatusBadRequest)
 			return
 		}
 
 		// Get the book from the database
 		var book model.Book
-		result := db.First(&book, id)
+		result := db.First(&book, "id = ?", id)
 		if result.Error != nil {
 			if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 				http.Error(w, "Book not found", http.StatusNotFound)
