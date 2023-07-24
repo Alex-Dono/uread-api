@@ -1,25 +1,44 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"os"
-
-	"github.com/jackc/pgx/v4"
-	"github.com/rs/cors"
+	"uread/config"
+	"uread/model"
 	"uread/router"
+
+	"github.com/rs/cors"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 func main() {
-	conn, err := pgx.Connect(context.Background(), "postgresql://uread:uread@localhost:5432/uread")
+	config.SetupConfig()
+
+	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s",
+		config.Config.Database.DBAddr,
+		config.Config.Database.DBUser,
+		config.Config.Database.DBPass,
+		config.Config.Database.DBName,
+		config.Config.Database.DBPort,
+		config.Config.Database.DBType,
+	)
+
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
 		os.Exit(1)
 	}
-	defer conn.Close(context.Background())
 
-	mux := router.SetupRouter(conn)
+	err = db.AutoMigrate(&model.Book{})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to auto-migrate: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Database migration successful\n")
+
+	mux := router.SetupRouter(db)
 
 	handler := cors.New(cors.Options{
 		AllowedOrigins: []string{"http://localhost:8081"},
@@ -27,7 +46,7 @@ func main() {
 		AllowedHeaders: []string{"*"},
 	}).Handler(mux)
 
-	fmt.Printf("Connecting on port 8080")
+	fmt.Printf("Connecting on port 8080\n")
 	err = http.ListenAndServe(":8080", handler)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to connect to server: %v\n", err)
