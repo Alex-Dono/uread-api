@@ -1,11 +1,11 @@
 package controller
 
 import (
-	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v4"
+	"gorm.io/gorm"
 	"io"
 	"net/http"
 	"os"
@@ -14,48 +14,23 @@ import (
 	"uread/model"
 )
 
-func GetAllBooks(conn *pgx.Conn) http.HandlerFunc {
+func GetAllBooks(db *gorm.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Query the database for all books
-		rows, err := conn.Query(context.Background(), "SELECT * FROM books")
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		defer rows.Close()
-
-		// Iterate through the result set and append each book to a slice
 		var books []model.Book
-		for rows.Next() {
-			var book model.Book
-			err = rows.Scan(&book.ID, &book.Title, &book.Author, &book.FilePath)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			books = append(books, book)
-		}
-
-		// Check for errors from iterating over rows.
-		if err := rows.Err(); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+		result := db.Find(&books)
+		if result.Error != nil {
+			http.Error(w, result.Error.Error(), http.StatusInternalServerError)
 			return
 		}
-
-		// Convert the slice to JSON
-		booksJson, err := json.Marshal(books)
+		err := json.NewEncoder(w).Encode(books)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			http.Error(w, result.Error.Error(), http.StatusInternalServerError)
 			return
 		}
-
-		// Write the JSON to the response
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(booksJson)
 	}
 }
 
-func GetBook(conn *pgx.Conn) http.HandlerFunc {
+func GetBook(db *gorm.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Get the book's ID from the URL parameters
 		id, err := strconv.Atoi(r.URL.Query().Get("id"))
@@ -66,9 +41,13 @@ func GetBook(conn *pgx.Conn) http.HandlerFunc {
 
 		// Get the book from the database
 		var book model.Book
-		err = conn.QueryRow(context.Background(), "SELECT * FROM books WHERE id = $1", id).Scan(&book.ID, &book.Title, &book.Author, &book.FilePath)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+		result := db.First(&book, id)
+		if result.Error != nil {
+			if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+				http.Error(w, "Book not found", http.StatusNotFound)
+			} else {
+				http.Error(w, result.Error.Error(), http.StatusInternalServerError)
+			}
 			return
 		}
 
@@ -77,7 +56,7 @@ func GetBook(conn *pgx.Conn) http.HandlerFunc {
 	}
 }
 
-func UploadBook(conn *pgx.Conn) http.HandlerFunc {
+func UploadBook(db *gorm.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Parse the multipart form in the request
 		err := r.ParseMultipartForm(10 << 20) // limit your maxMultipartMemory
@@ -109,11 +88,15 @@ func UploadBook(conn *pgx.Conn) http.HandlerFunc {
 		}
 
 		// Create a new book in the database with the file's path
-		_, err = conn.Exec(context.Background(), "INSERT INTO books (id, title, author, file_path) VALUES ($1, $2, $3, $4)",
-			uuid.New(),
-			r.FormValue("title"), r.FormValue("author"), filepath.Join("./uploads", handler.Filename))
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+		book := model.Book{
+			ID:       uuid.New(),
+			Title:    r.FormValue("title"),
+			Author:   r.FormValue("author"),
+			FilePath: filepath.Join("./uploads", handler.Filename),
+		}
+		result := db.Create(&book)
+		if result.Error != nil {
+			http.Error(w, result.Error.Error(), http.StatusInternalServerError)
 			return
 		}
 
