@@ -40,12 +40,14 @@ func GetBook(db *gorm.DB) http.HandlerFunc {
 
 		// Get the book from the database
 		var book model.Book
-		result := db.First(&book, "id = ?", id)
-		if result.Error != nil {
-			if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		err := db.
+			Where("id = ?", id).
+			First(&book).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
 				http.Error(w, "Book not found", http.StatusNotFound)
 			} else {
-				http.Error(w, result.Error.Error(), http.StatusInternalServerError)
+				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
 			return
 		}
